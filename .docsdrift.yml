@@ -1,0 +1,45 @@
+# docs-drift configuration
+#
+# Each rule pairs a set of code paths with the docs that are supposed to
+# describe them. When a pull request touches the code side and leaves the
+# docs side alone, the check speaks up.
+#
+# Start with two or three rules covering the docs that hurt most when they
+# go stale. Rules are cheap to add later.
+
+rules:
+  - name: Public API reference
+    why: >
+      The API reference is the first thing new integrators read. When an
+      endpoint changes and the reference does not, they lose a day.
+    code:
+      - "src/api/**"
+      - "src/routes/**"
+    docs:
+      - "docs/api/**"
+      - "openapi.yaml"
+
+  - name: Environment setup
+    why: >
+      Setup docs go stale silently. Nobody notices until a new teammate
+      spends their first morning debugging a dependency list.
+    code:
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "package.json"
+      - "requirements.txt"
+      - "pyproject.toml"
+    docs:
+      - "README.md"
+      - "docs/getting-started.md"
+      - "CONTRIBUTING.md"
+
+  - name: Configuration options
+    why: >
+      A config flag that exists in code but not in the docs is a support
+      ticket waiting to happen.
+    code:
+      - "src/config/**"
+      - "config/**"
+    docs:
+      - "docs/configuration.md"

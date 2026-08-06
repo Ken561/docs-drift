@@ -1,0 +1,94 @@
+name: "Docs Drift Check"
+description: "Flag pull requests that change code without updating the docs that describe it."
+author: "docs-drift contributors"
+
+branding:
+  icon: "alert-triangle"
+  color: "purple"
+
+inputs:
+  config:
+    description: "Path to the .docsdrift.yml config file."
+    required: false
+    default: ".docsdrift.yml"
+  fail-on-drift:
+    description: "Fail the check when drift is found. Start with false while a team is adopting this."
+    required: false
+    default: "false"
+  comment:
+    description: "Post the result as a pull request comment."
+    required: false
+    default: "true"
+  skip-label:
+    description: "Pull request label that skips the check."
+    required: false
+    default: "docs-drift-ok"
+
+outputs:
+  drift-found:
+    description: "true when at least one rule drifted."
+    value: ${{ steps.check.outputs.drift-found }}
+  report:
+    description: "The markdown report."
+    value: ${{ steps.check.outputs.report }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check for skip label
+      id: skip
+      shell: bash
+      run: |
+        if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q '"${{ inputs.skip-label }}"'; then
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Collect changed files
+      if: steps.skip.outputs.skip == 'false'
+      shell: bash
+      run: |
+        git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}" || true
+        git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD > changed_files.txt
+        echo "Changed files:"
+        cat changed_files.txt
+
+    - name: Run drift check
+      id: check
+      if: steps.skip.outputs.skip == 'false'
+      shell: bash
+      run: |
+        set +e
+        python3 "${{ github.action_path }}/scripts/check_drift.py" \
+          --config "${{ inputs.config }}" \
+          --changed-files-file changed_files.txt \
+          $([ "${{ inputs.fail-on-drift }}" = "true" ] && echo "--fail-on-drift") \
+          > report.md
+        status=$?
+        set -e
+
+        {
+          echo "report<<DOCSDRIFT_EOF"
+          cat report.md
+          echo "DOCSDRIFT_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        if grep -q "No drift found" report.md; then
+          echo "drift-found=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "drift-found=true" >> "$GITHUB_OUTPUT"
+        fi
+
+        cat report.md >> "$GITHUB_STEP_SUMMARY"
+        exit $status
+
+    - name: Comment on the pull request
+      if: steps.skip.outputs.skip == 'false' && inputs.comment == 'true' && always()
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh pr comment "${{ github.event.pull_request.number }}" \
+          --repo "${{ github.repository }}" \
+          --body-file report.md || echo "Could not post comment. Check that the workflow grants pull-requests: write."
