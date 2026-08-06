@@ -89,7 +89,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: your-org/docs-drift@v1
+      - uses: Ken561/docs-drift@v1
         with:
           fail-on-drift: "false"
 ```
